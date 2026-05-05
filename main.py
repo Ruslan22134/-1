@@ -1,45 +1,40 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import random
-import string
 import json
 from datetime import datetime
 import os
 
 
-class PasswordGenerator:
-    """Графическое приложение для генерации случайных паролей с историей"""
+class QuoteGenerator:
+    """Графическое приложение для генерации случайных цитат с фильтрацией"""
     
     def __init__(self, root):
         self.root = root
-        self.root.title("Random Password Generator")
-        self.root.geometry("800x650")
+        self.root.title("Random Quote Generator - Ткаченко Руслан")
+        self.root.geometry("900x700")
         self.root.resizable(True, True)
         
-        # Настройка стилей
-        style = ttk.Style()
-        style.configure("Title.TLabel", font=("Arial", 16, "bold"))
-        style.configure("Password.TEntry", font=("Courier", 14))
+        # Файл для хранения цитат
+        self.data_file = "quotes.json"
+        self.quotes = []
+        self.filtered_quotes = []
         
-        # Файл для хранения истории
-        self.history_file = "password_history.json"
-        self.history = []
+        # Загрузка цитат
+        self.load_quotes()
         
-        # Загрузка истории
-        self.load_history()
-        
-        # Переменные для настроек
-        self.password_length = tk.IntVar(value=12)
-        self.use_uppercase = tk.BooleanVar(value=True)
-        self.use_lowercase = tk.BooleanVar(value=True)
-        self.use_digits = tk.BooleanVar(value=True)
-        self.use_special = tk.BooleanVar(value=False)
+        # Переменные для фильтрации
+        self.filter_author = tk.StringVar()
+        self.filter_topic = tk.StringVar()
         
         # Создание интерфейса
         self.create_widgets()
         
-        # Обновление истории
-        self.refresh_history()
+        # Обновление списка авторов и тем
+        self.update_filters()
+        
+        # Отображение случайной цитаты при запуске
+        self.show_random_quote()
     
     def create_widgets(self):
         """Создание всех элементов интерфейса"""
@@ -48,311 +43,483 @@ class PasswordGenerator:
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         # Заголовок
-        title_label = ttk.Label(main_frame, text="🔐 ГЕНЕРАТОР СЛУЧАЙНЫХ ПАРОЛЕЙ", style="Title.TLabel")
+        title_label = ttk.Label(main_frame, text="📖 ГЕНЕРАТОР СЛУЧАЙНЫХ ЦИТАТ", 
+                                 font=("Arial", 18, "bold"))
         title_label.pack(pady=10)
         
-        # Рамка настроек
-        settings_frame = ttk.LabelFrame(main_frame, text="Настройки пароля", padding="15")
-        settings_frame.pack(fill=tk.X, pady=10)
+        # Рамка для отображения цитаты
+        quote_frame = ttk.LabelFrame(main_frame, text="🌟 Случайная цитата", padding="20")
+        quote_frame.pack(fill=tk.BOTH, expand=True, pady=10)
         
-        # Ползунок длины пароля
-        length_frame = ttk.Frame(settings_frame)
-        length_frame.pack(fill=tk.X, pady=10)
+        # Текст цитаты
+        self.quote_text = tk.Text(quote_frame, height=8, width=70, wrap=tk.WORD,
+                                   font=("Georgia", 14), relief=tk.SUNKEN, borderwidth=2)
+        self.quote_text.pack(fill=tk.BOTH, expand=True, pady=10)
+        self.quote_text.config(state=tk.DISABLED)
         
-        ttk.Label(length_frame, text="Длина пароля:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5)
+        # Информация об авторе и теме
+        info_frame = ttk.Frame(quote_frame)
+        info_frame.pack(fill=tk.X, pady=5)
         
-        self.length_scale = ttk.Scale(
-            length_frame, from_=4, to=32, orient=tk.HORIZONTAL,
-            variable=self.password_length, command=self.update_length_label
-        )
-        self.length_scale.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
+        self.author_label = ttk.Label(info_frame, text="Автор: ---", font=("Arial", 11, "italic"))
+        self.author_label.pack(side=tk.LEFT, padx=10)
         
-        self.length_label = ttk.Label(length_frame, text="12", font=("Arial", 10, "bold"))
-        self.length_label.pack(side=tk.LEFT, padx=5)
+        self.topic_label = ttk.Label(info_frame, text="Тема: ---", font=("Arial", 11))
+        self.topic_label.pack(side=tk.LEFT, padx=10)
         
-        ttk.Label(length_frame, text="символов").pack(side=tk.LEFT, padx=5)
+        self.date_label = ttk.Label(info_frame, text="Добавлена: ---", font=("Arial", 9))
+        self.date_label.pack(side=tk.RIGHT, padx=10)
         
-        # Чекбоксы для выбора символов
-        checkbox_frame = ttk.LabelFrame(settings_frame, text="Типы символов", padding="10")
-        checkbox_frame.pack(fill=X, pady=10)
+        # Кнопки управления
+        btn_frame = ttk.Frame(quote_frame)
+        btn_frame.pack(pady=10)
         
-        # Создаем два столбца для чекбоксов
-        left_col = ttk.Frame(checkbox_frame)
-        left_col.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=20)
+        ttk.Button(btn_frame, text="🎲 СЛУЧАЙНАЯ ЦИТАТА", 
+                   command=self.show_random_quote).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="📋 КОПИРОВАТЬ", 
+                   command=self.copy_quote).pack(side=tk.LEFT, padx=5)
         
-        right_col = ttk.Frame(checkbox_frame)
-        right_col.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=20)
+        # Рамка фильтрации
+        filter_frame = ttk.LabelFrame(main_frame, text="🔍 Фильтрация цитат", padding="10")
+        filter_frame.pack(fill=tk.X, pady=10)
         
-        ttk.Checkbutton(
-            left_col, text="🔤 Заглавные буквы (A-Z)",
-            variable=self.use_uppercase, command=self.validate_settings
-        ).pack(anchor=tk.W, pady=5)
+        # Фильтр по автору
+        author_filter_frame = ttk.Frame(filter_frame)
+        author_filter_frame.pack(fill=tk.X, pady=5)
         
-        ttk.Checkbutton(
-            left_col, text="🔡 Строчные буквы (a-z)",
-            variable=self.use_lowercase, command=self.validate_settings
-        ).pack(anchor=tk.W, pady=5)
+        ttk.Label(author_filter_frame, text="Автор:").pack(side=tk.LEFT, padx=5)
+        self.author_combo = ttk.Combobox(author_filter_frame, textvariable=self.filter_author, 
+                                          width=30, state="readonly")
+        self.author_combo.pack(side=tk.LEFT, padx=5)
+        self.author_combo.bind('<<ComboboxSelected>>', self.apply_filters)
         
-        ttk.Checkbutton(
-            right_col, text="🔢 Цифры (0-9)",
-            variable=self.use_digits, command=self.validate_settings
-        ).pack(anchor=tk.W, pady=5)
+        ttk.Button(author_filter_frame, text="Очистить", 
+                   command=self.clear_author_filter).pack(side=tk.LEFT, padx=5)
         
-        ttk.Checkbutton(
-            right_col, text="✨ Спецсимволы (!@#$%^&*)",
-            variable=self.use_special, command=self.validate_settings
-        ).pack(anchor=tk.W, pady=5)
+        # Фильтр по теме
+        topic_filter_frame = ttk.Frame(filter_frame)
+        topic_filter_frame.pack(fill=tk.X, pady=5)
         
-        # Кнопка генерации
-        generate_btn = ttk.Button(
-            settings_frame, text="🎲 СГЕНЕРИРОВАТЬ ПАРОЛЬ",
-            command=self.generate_password
-        )
-        generate_btn.pack(pady=15)
+        ttk.Label(topic_filter_frame, text="Тема:").pack(side=tk.LEFT, padx=5)
+        self.topic_combo = ttk.Combobox(topic_filter_frame, textvariable=self.filter_topic, 
+                                         width=30, state="readonly")
+        self.topic_combo.pack(side=tk.LEFT, padx=5)
+        self.topic_combo.bind('<<ComboboxSelected>>', self.apply_filters)
         
-        # Рамка отображения пароля
-        display_frame = ttk.LabelFrame(main_frame, text="Сгенерированный пароль", padding="15")
-        display_frame.pack(fill=tk.X, pady=10)
+        ttk.Button(topic_filter_frame, text="Очистить", 
+                   command=self.clear_topic_filter).pack(side=tk.LEFT, padx=5)
         
-        self.password_var = tk.StringVar()
-        self.password_entry = ttk.Entry(
-            display_frame, textvariable=self.password_var,
-            font=("Courier", 14), state="readonly", justify="center"
-        )
-        self.password_entry.pack(fill=tk.X, padx=10, pady=10)
+        ttk.Button(filter_frame, text="🔄 СБРОСИТЬ ВСЕ ФИЛЬТРЫ", 
+                   command=self.reset_filters).pack(pady=5)
         
-        # Рамка для кнопок копирования
-        copy_frame = ttk.Frame(display_frame)
-        copy_frame.pack(pady=5)
+        # Рамка добавления новой цитаты
+        add_frame = ttk.LabelFrame(main_frame, text="➕ Добавить новую цитату", padding="10")
+        add_frame.pack(fill=tk.X, pady=10)
         
-        copy_btn = ttk.Button(copy_frame, text="📋 Копировать в буфер", command=self.copy_to_clipboard)
-        copy_btn.pack(side=tk.LEFT, padx=5)
+        # Поле для текста цитаты
+        ttk.Label(add_frame, text="Текст цитаты:").pack(anchor=tk.W, pady=2)
+        self.new_quote_text = tk.Text(add_frame, height=4, width=70, wrap=tk.WORD)
+        self.new_quote_text.pack(fill=tk.X, pady=5)
         
-        # Индикатор сложности
-        self.strength_label = ttk.Label(copy_frame, text="", font=("Arial", 9))
-        self.strength_label.pack(side=tk.LEFT, padx=10)
+        # Поле для автора
+        author_frame = ttk.Frame(add_frame)
+        author_frame.pack(fill=tk.X, pady=5)
         
-        # Рамка истории
-        history_frame = ttk.LabelFrame(main_frame, text="История паролей", padding="10")
-        history_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        ttk.Label(author_frame, text="Автор:").pack(side=tk.LEFT, padx=5)
+        self.new_author_entry = ttk.Entry(author_frame, width=30)
+        self.new_author_entry.pack(side=tk.LEFT, padx=5)
         
-        # Таблица истории
-        columns = ("ID", "Пароль", "Длина", "Символы", "Дата")
-        self.tree = ttk.Treeview(history_frame, columns=columns, show="headings", height=8)
+        ttk.Label(author_frame, text="Тема:").pack(side=tk.LEFT, padx=5)
+        self.new_topic_entry = ttk.Entry(author_frame, width=30)
+        self.new_topic_entry.pack(side=tk.LEFT, padx=5)
         
-        self.tree.heading("ID", text="№")
-        self.tree.heading("Пароль", text="Пароль")
-        self.tree.heading("Длина", text="Длина")
-        self.tree.heading("Символы", text="Использованные символы")
-        self.tree.heading("Дата", text="Дата создания")
+        # Кнопки добавления
+        add_btn_frame = ttk.Frame(add_frame)
+        add_btn_frame.pack(pady=5)
         
-        self.tree.column("ID", width=50, anchor=tk.CENTER)
-        self.tree.column("Пароль", width=200, anchor=tk.CENTER)
-        self.tree.column("Длина", width=70, anchor=tk.CENTER)
-        self.tree.column("Символы", width=200, anchor=tk.CENTER)
-        self.tree.column("Дата", width=150, anchor=tk.CENTER)
+        ttk.Button(add_btn_frame, text="💾 ДОБАВИТЬ ЦИТАТУ", 
+                   command=self.add_quote).pack(side=tk.LEFT, padx=5)
+        ttk.Button(add_btn_frame, text="🗑 ОЧИСТИТЬ ФОРМУ", 
+                   command=self.clear_add_form).pack(side=tk.LEFT, padx=5)
         
-        # Скроллбар для таблицы
-        scrollbar = ttk.Scrollbar(history_frame, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scrollbar.set)
+        # Рамка управления данными
+        data_frame = ttk.LabelFrame(main_frame, text="📊 Управление данными", padding="10")
+        data_frame.pack(fill=tk.X, pady=10)
         
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # Кнопки управления историей
-        btn_frame = ttk.Frame(history_frame)
-        btn_frame.pack(fill=tk.X, pady=10)
-        
-        ttk.Button(btn_frame, text="🗑 Очистить историю", command=self.clear_history).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="💾 Сохранить историю", command=self.save_history).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="🔄 Обновить", command=self.refresh_history).pack(side=tk.LEFT, padx=5)
+        ttk.Button(data_frame, text="📋 ПОКАЗАТЬ ВСЕ ЦИТАТЫ", 
+                   command=self.show_all_quotes).pack(side=tk.LEFT, padx=5)
+        ttk.Button(data_frame, text="🗑 УДАЛИТЬ ПОСЛЕДНЮЮ", 
+                   command=self.delete_last_quote).pack(side=tk.LEFT, padx=5)
+        ttk.Button(data_frame, text="💾 СОХРАНИТЬ В JSON", 
+                   command=self.save_quotes).pack(side=tk.LEFT, padx=5)
+        ttk.Button(data_frame, text="📤 ЭКСПОРТ", 
+                   command=self.export_quotes).pack(side=tk.LEFT, padx=5)
         
         # Статус бар
         self.status_var = tk.StringVar()
         self.status_var.set("Готов к работе")
         status_bar = ttk.Label(main_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
         status_bar.pack(fill=tk.X, pady=5)
+        
+        # Счетчик цитат
+        self.count_label = ttk.Label(main_frame, text="", font=("Arial", 9))
+        self.count_label.pack()
+        self.update_count_label()
     
-    def update_length_label(self, event=None):
-        """Обновление отображения длины пароля"""
-        self.length_label.config(text=str(int(self.password_length.get())))
+    def validate_quote(self, text, author, topic):
+        """Валидация полей цитаты"""
+        # Проверка на пустые строки
+        if not text or not text.strip():
+            messagebox.showerror("Ошибка", "Текст цитаты не может быть пустым!")
+            return False
+        
+        if not author or not author.strip():
+            messagebox.showerror("Ошибка", "Автор не может быть пустым!")
+            return False
+        
+        if not topic or not topic.strip():
+            messagebox.showerror("Ошибка", "Тема не может быть пустой!")
+            return False
+        
+        # Проверка на минимальную длину
+        if len(text.strip()) < 5:
+            messagebox.showerror("Ошибка", "Текст цитаты слишком короткий (минимум 5 символов)!")
+            return False
+        
+        if len(author.strip()) < 2:
+            messagebox.showerror("Ошибка", "Имя автора слишком короткое (минимум 2 символа)!")
+            return False
+        
+        return True
     
-    def validate_settings(self):
-        """Проверка, что выбран хотя бы один тип символов"""
-        if not (self.use_uppercase.get() or self.use_lowercase.get() or 
-                self.use_digits.get() or self.use_special.get()):
-            messagebox.showwarning(
-                "Предупреждение",
-                "Выберите хотя бы один тип символов!\nУстанавливаю строчные буквы по умолчанию."
-            )
-            self.use_lowercase.set(True)
-    
-    def check_password_strength(self, password):
-        """Оценка сложности пароля"""
-        score = 0
-        if len(password) >= 12:
-            score += 1
-        if len(password) >= 16:
-            score += 1
-        if any(c.isupper() for c in password):
-            score += 1
-        if any(c.islower() for c in password):
-            score += 1
-        if any(c.isdigit() for c in password):
-            score += 1
-        if any(c in "!@#$%^&*" for c in password):
-            score += 1
-        
-        if score <= 2:
-            return "🔴 Слабый"
-        elif score <= 4:
-            return "🟡 Средний"
-        else:
-            return "🟢 Сильный"
-    
-    def generate_password(self):
-        """Генерация случайного пароля на основе настроек"""
-        # Валидация длины
-        length = int(self.password_length.get())
-        if length < 4:
-            messagebox.showerror("Ошибка", "Минимальная длина пароля - 4 символа!")
-            self.password_length.set(4)
-            length = 4
-        elif length > 32:
-            messagebox.showerror("Ошибка", "Максимальная длина пароля - 32 символа!")
-            self.password_length.set(32)
-            length = 32
-        
-        # Проверка выбора символов
-        self.validate_settings()
-        
-        # Формирование пула символов
-        char_pool = ""
-        used_types = []
-        
-        if self.use_uppercase.get():
-            char_pool += string.ascii_uppercase
-            used_types.append("A-Z")
-        if self.use_lowercase.get():
-            char_pool += string.ascii_lowercase
-            used_types.append("a-z")
-        if self.use_digits.get():
-            char_pool += string.digits
-            used_types.append("0-9")
-        if self.use_special.get():
-            char_pool += "!@#$%^&*"
-            used_types.append("!@#$%^&*")
-        
-        # Гарантируем, что пароль содержит хотя бы один символ каждого выбранного типа
-        password_chars = []
-        
-        # Добавляем по одному символу каждого типа
-        if self.use_uppercase.get():
-            password_chars.append(random.choice(string.ascii_uppercase))
-        if self.use_lowercase.get():
-            password_chars.append(random.choice(string.ascii_lowercase))
-        if self.use_digits.get():
-            password_chars.append(random.choice(string.digits))
-        if self.use_special.get():
-            password_chars.append(random.choice("!@#$%^&*"))
-        
-        # Заполняем остальные символы случайными из пула
-        remaining_length = length - len(password_chars)
-        if remaining_length > 0:
-            password_chars.extend(random.choice(char_pool) for _ in range(remaining_length))
-        
-        # Перемешиваем символы
-        random.shuffle(password_chars)
-        password = ''.join(password_chars)
-        
-        # Оценка сложности
-        strength = self.check_password_strength(password)
-        self.strength_label.config(text=f"Сложность: {strength}")
-        
-        # Сохранение в историю
-        self.save_to_history(password, length, ', '.join(used_types))
-        
-        # Отображение пароля
-        self.password_var.set(password)
-        self.status_var.set(f"✅ Пароль сгенерирован! Сложность: {strength}")
-    
-    def save_to_history(self, password, length, char_types):
-        """Сохранение пароля в историю"""
-        history_entry = {
-            'id': len(self.history) + 1,
-            'password': password,
-            'length': length,
-            'char_types': char_types,
-            'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        self.history.append(history_entry)
-        self.save_history()
-        self.refresh_history()
-    
-    def refresh_history(self):
-        """Обновление таблицы истории"""
-        # Очистка таблицы
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        
-        # Добавление записей
-        for entry in reversed(self.history):  # Показываем новые сверху
-            self.tree.insert("", 0, values=(
-                entry['id'],
-                entry['password'],
-                entry['length'],
-                entry['char_types'],
-                entry['date']
-            ))
-    
-    def clear_history(self):
-        """Очистка истории"""
-        if messagebox.askyesno("Подтверждение", "Вы уверены, что хотите очистить всю историю?"):
-            self.history = []
-            self.save_history()
-            self.refresh_history()
-            self.status_var.set("🗑 История очищена")
-            messagebox.showinfo("Успех", "История очищена!")
-    
-    def copy_to_clipboard(self):
-        """Копирование пароля в буфер обмена"""
-        password = self.password_var.get()
-        if password:
-            self.root.clipboard_clear()
-            self.root.clipboard_append(password)
-            self.status_var.set("📋 Пароль скопирован в буфер обмена!")
-            messagebox.showinfo("Успех", "Пароль скопирован в буфер обмена!")
-        else:
-            messagebox.showwarning("Предупреждение", "Сначала сгенерируйте пароль!")
-    
-    def load_history(self):
-        """Загрузка истории из JSON файла"""
-        if os.path.exists(self.history_file):
-            try:
-                with open(self.history_file, 'r', encoding='utf-8') as f:
-                    self.history = json.load(f)
-                self.status_var.set(f"📂 Загружено {len(self.history)} записей из истории")
-            except (json.JSONDecodeError, FileNotFoundError):
-                self.history = []
-                self.status_var.set("⚠️ Ошибка загрузки истории")
-        else:
-            self.history = []
-            self.status_var.set("🆕 Новая сессия")
-    
-    def save_history(self):
-        """Сохранение истории в JSON файл"""
+    def add_quote(self):
+        """Добавление новой цитаты"""
         try:
-            with open(self.history_file, 'w', encoding='utf-8') as f:
-                json.dump(self.history, f, ensure_ascii=False, indent=2)
+            text = self.new_quote_text.get("1.0", tk.END).strip()
+            author = self.new_author_entry.get().strip()
+            topic = self.new_topic_entry.get().strip()
+            
+            # Валидация
+            if not self.validate_quote(text, author, topic):
+                return
+            
+            # Проверка на дубликат
+            for quote in self.quotes:
+                if quote['text'].lower() == text.lower():
+                    messagebox.showerror("Ошибка", "Такая цитата уже существует!")
+                    return
+            
+            # Создание новой цитаты
+            new_quote = {
+                'id': len(self.quotes) + 1,
+                'text': text,
+                'author': author,
+                'topic': topic,
+                'date_added': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+            
+            self.quotes.append(new_quote)
+            self.save_quotes()
+            self.clear_add_form()
+            self.update_filters()
+            self.update_count_label()
+            self.status_var.set(f"✅ Цитата добавлена! Автор: {author}, Тема: {topic}")
+            messagebox.showinfo("Успех", "Цитата успешно добавлена!")
+            
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось сохранить историю: {e}")
-            self.status_var.set("❌ Ошибка сохранения истории")
+            messagebox.showerror("Ошибка", f"Не удалось добавить цитату: {e}")
+    
+    def clear_add_form(self):
+        """Очистка формы добавления"""
+        self.new_quote_text.delete("1.0", tk.END)
+        self.new_author_entry.delete(0, tk.END)
+        self.new_topic_entry.delete(0, tk.END)
+    
+    def show_random_quote(self):
+        """Отображение случайной цитаты с учетом фильтров"""
+        try:
+            # Определяем источник цитат (с фильтром или без)
+            if self.filtered_quotes:
+                source_quotes = self.filtered_quotes
+            else:
+                source_quotes = self.quotes
+            
+            if not source_quotes:
+                self.quote_text.config(state=tk.NORMAL)
+                self.quote_text.delete("1.0", tk.END)
+                self.quote_text.insert("1.0", "Нет цитат, соответствующих фильтру!\n\nДобавьте новые цитаты или сбросьте фильтры.")
+                self.quote_text.config(state=tk.DISABLED)
+                self.author_label.config(text="Автор: ---")
+                self.topic_label.config(text="Тема: ---")
+                self.date_label.config(text="Добавлена: ---")
+                return
+            
+            # Выбор случайной цитаты
+            quote = random.choice(source_quotes)
+            
+            # Отображение цитаты
+            self.quote_text.config(state=tk.NORMAL)
+            self.quote_text.delete("1.0", tk.END)
+            self.quote_text.insert("1.0", f"«{quote['text']}»")
+            self.quote_text.config(state=tk.DISABLED)
+            
+            self.author_label.config(text=f"Автор: {quote['author']}")
+            self.topic_label.config(text=f"Тема: {quote['topic']}")
+            self.date_label.config(text=f"Добавлена: {quote.get('date_added', 'Неизвестно')}")
+            
+            self.status_var.set(f"🎲 Показана случайная цитата от {quote['author']}")
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось показать цитату: {e}")
+    
+    def copy_quote(self):
+        """Копирование цитаты в буфер обмена"""
+        try:
+            text = self.quote_text.get("1.0", tk.END).strip()
+            if text and text != "Нет цитат, соответствующих фильтру!":
+                self.root.clipboard_clear()
+                self.root.clipboard_append(text)
+                self.status_var.set("📋 Цитата скопирована в буфер обмена!")
+                messagebox.showinfo("Успех", "Цитата скопирована!")
+            else:
+                messagebox.showwarning("Предупреждение", "Нет цитаты для копирования!")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось скопировать: {e}")
+    
+    def apply_filters(self, event=None):
+        """Применение фильтров по автору и теме"""
+        try:
+            author = self.filter_author.get()
+            topic = self.filter_topic.get()
+            
+            self.filtered_quotes = []
+            
+            for quote in self.quotes:
+                author_match = not author or quote['author'] == author
+                topic_match = not topic or quote['topic'] == topic
+                
+                if author_match and topic_match:
+                    self.filtered_quotes.append(quote)
+            
+            count = len(self.filtered_quotes)
+            self.status_var.set(f"🔍 Найдено цитат: {count}")
+            
+            if count > 0:
+                self.show_random_quote()
+            else:
+                self.show_random_quote()  # Покажет сообщение "Нет цитат"
+                
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка фильтрации: {e}")
+    
+    def clear_author_filter(self):
+        """Очистка фильтра по автору"""
+        self.filter_author.set("")
+        self.apply_filters()
+    
+    def clear_topic_filter(self):
+        """Очистка фильтра по теме"""
+        self.filter_topic.set("")
+        self.apply_filters()
+    
+    def reset_filters(self):
+        """Сброс всех фильтров"""
+        self.filter_author.set("")
+        self.filter_topic.set("")
+        self.filtered_quotes = []
+        self.apply_filters()
+        self.status_var.set("🔄 Все фильтры сброшены")
+    
+    def update_filters(self):
+        """Обновление списков авторов и тем для фильтрации"""
+        try:
+            authors = sorted(set(quote['author'] for quote in self.quotes))
+            topics = sorted(set(quote['topic'] for quote in self.quotes))
+            
+            self.author_combo['values'] = authors
+            self.topic_combo['values'] = topics
+            
+        except Exception as e:
+            print(f"Ошибка обновления фильтров: {e}")
+    
+    def show_all_quotes(self):
+        """Отображение всех цитат в отдельном окне"""
+        try:
+            if not self.quotes:
+                messagebox.showinfo("Информация", "Нет добавленных цитат!")
+                return
+            
+            # Создание нового окна
+            quotes_window = tk.Toplevel(self.root)
+            quotes_window.title("Все цитаты")
+            quotes_window.geometry("800x500")
+            
+            # Текстовое поле для отображения
+            text_widget = tk.Text(quotes_window, wrap=tk.WORD, font=("Georgia", 10))
+            text_widget.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            
+            # Скроллбар
+            scrollbar = ttk.Scrollbar(text_widget)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            text_widget.config(yscrollcommand=scrollbar.set)
+            scrollbar.config(command=text_widget.yview)
+            
+            # Вывод всех цитат
+            for i, quote in enumerate(self.quotes, 1):
+                text_widget.insert(tk.END, f"{i}. \"{quote['text']}\"\n")
+                text_widget.insert(tk.END, f"   Автор: {quote['author']} | Тема: {quote['topic']}\n")
+                text_widget.insert(tk.END, f"   Добавлена: {quote.get('date_added', 'Неизвестно')}\n")
+                text_widget.insert(tk.END, "-" * 70 + "\n\n")
+            
+            text_widget.config(state=tk.DISABLED)
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось показать цитаты: {e}")
+    
+    def delete_last_quote(self):
+        """Удаление последней добавленной цитаты"""
+        try:
+            if not self.quotes:
+                messagebox.showwarning("Предупреждение", "Нет цитат для удаления!")
+                return
+            
+            if messagebox.askyesno("Подтверждение", f"Удалить последнюю цитату?\n\n\"{self.quotes[-1]['text'][:100]}...\""):
+                deleted = self.quotes.pop()
+                self.save_quotes()
+                self.update_filters()
+                self.update_count_label()
+                self.apply_filters()
+                self.status_var.set(f"🗑 Удалена цитата от {deleted['author']}")
+                messagebox.showinfo("Успех", "Цитата удалена!")
+                
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось удалить цитату: {e}")
+    
+    def update_count_label(self):
+        """Обновление счетчика цитат"""
+        count = len(self.quotes)
+        self.count_label.config(text=f"📊 Всего цитат в базе: {count}")
+    
+    def load_quotes(self):
+        """Загрузка цитат из JSON файла с обработкой ошибок"""
+        try:
+            # Пример цитат по умолчанию, если файл пустой
+            default_quotes = [
+                {
+                    "id": 1,
+                    "text": "Будьте тем изменением, которое хотите видеть в мире.",
+                    "author": "Махатма Ганди",
+                    "topic": "Мотивация",
+                    "date_added": "2026-05-05 10:00:00"
+                },
+                {
+                    "id": 2,
+                    "text": "Жизнь - это то, что с тобой происходит, пока ты строишь планы.",
+                    "author": "Джон Леннон",
+                    "topic": "Жизнь",
+                    "date_added": "2026-05-05 10:00:00"
+                },
+                {
+                    "id": 3,
+                    "text": "Успех - это способность идти от неудачи к неудаче, не теряя энтузиазма.",
+                    "author": "Уинстон Черчилль",
+                    "topic": "Успех",
+                    "date_added": "2026-05-05 10:00:00"
+                },
+                {
+                    "id": 4,
+                    "text": "Единственный способ сделать великую работу - любить то, что ты делаешь.",
+                    "author": "Стив Джобс",
+                    "topic": "Работа",
+                    "date_added": "2026-05-05 10:00:00"
+                },
+                {
+                    "id": 5,
+                    "text": "Знание - сила.",
+                    "author": "Фрэнсис Бэкон",
+                    "topic": "Знание",
+                    "date_added": "2026-05-05 10:00:00"
+                }
+            ]
+            
+            if not os.path.exists(self.data_file):
+                self.quotes = default_quotes
+                self.save_quotes()
+                self.status_var.set("📖 Загружены цитаты по умолчанию")
+                return
+            
+            try:
+                with open(self.data_file, 'r', encoding='utf-8') as f:
+                    data = f.read()
+                    
+                    if not data.strip():
+                        self.quotes = default_quotes
+                        self.status_var.set("⚠️ Файл пуст, загружены цитаты по умолчанию")
+                        return
+                    
+                    loaded_data = json.loads(data)
+                    
+                    if not isinstance(loaded_data, list):
+                        self.quotes = default_quotes
+                        self.status_var.set("⚠️ Неверный формат, загружены цитаты по умолчанию")
+                        return
+                    
+                    self.quotes = loaded_data
+                    self.status_var.set(f"📂 Загружено {len(self.quotes)} цитат")
+                    
+            except json.JSONDecodeError as e:
+                self.quotes = default_quotes
+                self.status_var.set(f"⚠️ Ошибка JSON, загружены цитаты по умолчанию")
+                
+                # Создание резервной копии
+                backup_file = f"{self.data_file}.backup"
+                try:
+                    if os.path.exists(self.data_file):
+                        os.rename(self.data_file, backup_file)
+                        self.status_var.set(f"📁 Создана резервная копия: {backup_file}")
+                except Exception:
+                    pass
+                    
+        except Exception as e:
+            self.quotes = []
+            self.status_var.set(f"❌ Ошибка загрузки: {e}")
+            messagebox.showerror("Ошибка", f"Не удалось загрузить цитаты:\n{e}")
+    
+    def save_quotes(self):
+        """Сохранение цитат в JSON файл"""
+        try:
+            with open(self.data_file, 'w', encoding='utf-8') as f:
+                json.dump(self.quotes, f, ensure_ascii=False, indent=2)
+            self.status_var.set("💾 Цитаты сохранены")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось сохранить цитаты: {e}")
+    
+    def export_quotes(self):
+        """Экспорт цитат в JSON файл"""
+        try:
+            from tkinter import filedialog
+            filename = filedialog.asksaveasfilename(
+                defaultextension=".json",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                title="Экспорт цитат"
+            )
+            
+            if filename:
+                with open(filename, 'w', encoding='utf-8') as f:
+                    json.dump(self.quotes, f, ensure_ascii=False, indent=2)
+                self.status_var.set(f"📤 Цитаты экспортированы в {filename}")
+                messagebox.showinfo("Успех", f"Экспортировано {len(self.quotes)} цитат!")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось экспортировать: {e}")
 
 
 def main():
-    root = tk.Tk()
-    app = PasswordGenerator(root)
-    root.mainloop()
+    try:
+        root = tk.Tk()
+        app = QuoteGenerator(root)
+        root.mainloop()
+    except Exception as e:
+        messagebox.showerror("Критическая ошибка", f"Не удалось запустить приложение:\n{e}")
 
 
 if __name__ == "__main__":
